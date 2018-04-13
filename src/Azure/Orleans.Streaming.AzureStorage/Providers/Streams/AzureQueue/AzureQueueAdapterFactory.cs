@@ -7,6 +7,7 @@ using Orleans.Serialization;
 using Orleans.Streams;
 using Orleans.Providers.Streams.Common;
 using Orleans.Configuration;
+using Orleans.Configuration.Overrides;
 
 namespace Orleans.Providers.Streams.AzureQueue
 {
@@ -68,7 +69,7 @@ namespace Orleans.Providers.Streams.AzureQueue
                 this.streamQueueMapper, 
                 this.loggerFactory, 
                 this.options.ConnectionString, 
-                this.options.ClusterId ?? this.clusterOptions.ClusterId, 
+                this.clusterOptions.ServiceId, 
                 this.providerName, 
                 this.options.MessageVisibilityTimeout);
             return Task.FromResult<IQueueAdapter>(adapter);
@@ -98,10 +99,11 @@ namespace Orleans.Providers.Streams.AzureQueue
 
         public static AzureQueueAdapterFactory<TDataAdapter> Create(IServiceProvider services, string name)
         {
-            var azurequeueOptions = services.GetOptionsByName<AzureQueueOptions>(name);
+            var azureQueueOptions = services.GetOptionsByName<AzureQueueOptions>(name);
             var queueMapperOptions = services.GetOptionsByName<HashRingStreamQueueMapperOptions>(name);
             var cacheOptions = services.GetOptionsByName<SimpleQueueCacheOptions>(name);
-            var factory = ActivatorUtilities.CreateInstance<AzureQueueAdapterFactory<TDataAdapter>>(services, name, azurequeueOptions, queueMapperOptions, cacheOptions);
+            IOptions<ClusterOptions> clusterOptions = services.GetProviderClusterOptions(name);
+            var factory = ActivatorUtilities.CreateInstance<AzureQueueAdapterFactory<TDataAdapter>>(services, name, azureQueueOptions, queueMapperOptions, cacheOptions, clusterOptions);
             factory.Init();
             return factory;
         }

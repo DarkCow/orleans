@@ -184,8 +184,14 @@ namespace Orleans.Messaging
             GatewayConnection gatewayConnection = null;
             bool startRequired = false;
 
+            if (!Running)
+            {
+                this.logger.Error(ErrorCode.ProxyClient_MsgCtrNotRunning, $"Ignoring {msg} because the Client message center is not running");
+                return;
+            }
+
             // If there's a specific gateway specified, use it
-            if (msg.TargetSilo != null)
+            if (msg.TargetSilo != null && GatewayManager.GetLiveGateways().Contains(msg.TargetSilo.ToGatewayUri()))
             {
                 Uri addr = msg.TargetSilo.ToGatewayUri();
                 lock (lockable)
@@ -366,6 +372,10 @@ namespace Orleans.Messaging
                 logger.Error(ErrorCode.ProxyClient_ReceiveError, "Unexpected error getting an inbound message", ex);
                 return null;
             }
+        }
+
+        public void RegisterLocalMessageHandler(Message.Categories category, Action<Message> handler)
+        {
         }
 
         internal void QueueIncomingMessage(Message msg)

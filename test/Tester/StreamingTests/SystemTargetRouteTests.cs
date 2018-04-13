@@ -37,16 +37,16 @@ namespace Tester.StreamingTests
             private class MyClientBuilderConfigurator : IClientBuilderConfigurator
             {
                 public void Configure(IConfiguration configuration, IClientBuilder clientBuilder) => clientBuilder
-                    .AddMemoryStreams<DefaultMemoryMessageBodySerializer>(StreamProviderName)
-                    .ConfigurePartitioning(partitionCount);
+                    .AddMemoryStreams<DefaultMemoryMessageBodySerializer>(StreamProviderName, b=>b
+                    .ConfigurePartitioning(partitionCount));
             }
 
             private class MySiloBuilderConfigurator : ISiloBuilderConfigurator
             {
                 public void Configure(ISiloHostBuilder hostBuilder) => hostBuilder
                     .AddMemoryGrainStorage("PubSubStore")
-                    .AddMemoryStreams<DefaultMemoryMessageBodySerializer>(StreamProviderName)
-                    .ConfigurePartitioning(partitionCount);
+                    .AddMemoryStreams<DefaultMemoryMessageBodySerializer>(StreamProviderName, b=>b
+                    .ConfigurePartitioning(partitionCount));
             }
         }
 
@@ -57,7 +57,7 @@ namespace Tester.StreamingTests
             this.fixture = fixture;
         }
 
-        [Fact(Skip = "Failes due to system target routing issues"), TestCategory("Functional"), TestCategory("Streaming")]
+        [SkippableFact(Skip = "https://github.com/dotnet/orleans/issues/4320"), TestCategory("Functional"), TestCategory("Streaming")]
         public async Task PersistentStreamingOverSingleGatewayTest()
         {
             const int streamCount = 100;

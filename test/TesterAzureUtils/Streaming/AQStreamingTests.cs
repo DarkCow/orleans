@@ -36,13 +36,13 @@ namespace Tester.AzureUtils.Streaming
             {
                 clientBuilder
                     .AddSimpleMessageStreamProvider(SmsStreamProviderName)
-                    .AddAzureQueueStreams<AzureQueueDataAdapterV2>(AzureQueueStreamProviderName)
-                    .ConfigureAzureQueue(ob=>ob.Configure(
+                    .AddAzureQueueStreams<AzureQueueDataAdapterV2>(AzureQueueStreamProviderName, b=>
+                    b.ConfigureAzureQueue(ob=>ob.Configure(
                         options =>
                         {
                             options.ConnectionString = TestDefaultConfiguration.DataConnectionString;
                         }))
-                    .ConfigurePartitioning(partitionCount);
+                    .ConfigurePartitioning(partitionCount));
             }
         }
 
@@ -54,24 +54,22 @@ namespace Tester.AzureUtils.Streaming
                     .AddSimpleMessageStreamProvider(SmsStreamProviderName)
                     .AddAzureTableGrainStorage("AzureStore", builder => builder.Configure<IOptions<ClusterOptions>>((options, silo) =>
                     {
-                        options.ServiceId = silo.Value.ServiceId.ToString();
                         options.ConnectionString = TestDefaultConfiguration.DataConnectionString;
                         options.DeleteStateOnClear = true;
                     }))
                     .AddAzureTableGrainStorage("PubSubStore", builder => builder.Configure<IOptions<ClusterOptions>>((options, silo) =>
                         {
-                            options.ServiceId = silo.Value.ServiceId.ToString();
                             options.ConnectionString = TestDefaultConfiguration.DataConnectionString;
                             options.DeleteStateOnClear = true;
                         }))
                     .AddMemoryGrainStorage("MemoryStore")
-                    .AddAzureQueueStreams<AzureQueueDataAdapterV2>(AzureQueueStreamProviderName)
-                    .ConfigureAzureQueue(ob => ob.Configure(
-                        options =>
-                        {
-                            options.ConnectionString = TestDefaultConfiguration.DataConnectionString;
-                        }))
-                    .ConfigurePartitioning(partitionCount);
+                    .AddAzureQueueStreams<AzureQueueDataAdapterV2>(AzureQueueStreamProviderName, c=>
+                        c.ConfigureAzureQueue(ob => ob.Configure(
+                            options =>
+                            {
+                                options.ConnectionString = TestDefaultConfiguration.DataConnectionString;
+                            }))
+                        .ConfigurePartitioning(partitionCount));
             }
         }
 

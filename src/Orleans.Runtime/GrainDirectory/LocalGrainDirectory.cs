@@ -23,7 +23,7 @@ namespace Orleans.Runtime.GrainDirectory
         private readonly List<SiloAddress> membershipRingList;
         
         private readonly HashSet<SiloAddress> membershipCache;
-        private readonly AsynchAgent maintainer;
+        private readonly DedicatedAsynchAgent maintainer;
         private readonly ILogger log;
         private readonly SiloAddress seed;
         private readonly RegistrarManager registrarManager;
@@ -256,6 +256,10 @@ namespace Orleans.Runtime.GrainDirectory
             if (maintainer != null)
             {
                 maintainer.Stop();
+            }
+            if (GsiActivationMaintainer != null)
+            {
+                GsiActivationMaintainer.Stop();
             }
             DirectoryCache.Clear();
         }
@@ -598,6 +602,8 @@ namespace Orleans.Runtime.GrainDirectory
 
                 // we are the owner     
                 var registrar = this.registrarManager.GetRegistrarForGrain(address.Grain);
+
+                if (log.IsEnabled(LogLevel.Trace)) log.Trace($"use registrar {registrar.GetType().Name} for activation {address}");
 
                 return registrar.IsSynchronous ? registrar.Register(address, singleActivation)
                     : await registrar.RegisterAsync(address, singleActivation);

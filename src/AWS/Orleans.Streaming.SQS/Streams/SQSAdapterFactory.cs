@@ -8,6 +8,7 @@ using Orleans.Streams;
 using Orleans.Serialization;
 using Orleans.Configuration;
 using Orleans;
+using Orleans.Configuration.Overrides;
 
 namespace OrleansAWSUtils.Streams
 {
@@ -60,7 +61,7 @@ namespace OrleansAWSUtils.Streams
         /// <summary>Creates the Azure Queue based adapter.</summary>
         public virtual Task<IQueueAdapter> CreateAdapter()
         {
-            var adapter = new SQSAdapter(this.serializationManager, this.streamQueueMapper, this.loggerFactory, this.sqsOptions.ConnectionString, this.sqsOptions.ClusterId ?? this.clusterOptions.ClusterId, this.providerName);
+            var adapter = new SQSAdapter(this.serializationManager, this.streamQueueMapper, this.loggerFactory, this.sqsOptions.ConnectionString, this.clusterOptions.ServiceId, this.providerName);
             return Task.FromResult<IQueueAdapter>(adapter);
         }
 
@@ -91,7 +92,8 @@ namespace OrleansAWSUtils.Streams
             var sqsOptions = services.GetOptionsByName<SqsOptions>(name);
             var cacheOptions = services.GetOptionsByName<SimpleQueueCacheOptions>(name);
             var queueMapperOptions = services.GetOptionsByName<HashRingStreamQueueMapperOptions>(name);
-            var factory = ActivatorUtilities.CreateInstance<SQSAdapterFactory>(services, name, sqsOptions, cacheOptions, queueMapperOptions);
+            IOptions<ClusterOptions> clusterOptions = services.GetProviderClusterOptions(name);
+            var factory = ActivatorUtilities.CreateInstance<SQSAdapterFactory>(services, name, sqsOptions, cacheOptions, queueMapperOptions, clusterOptions);
             factory.Init();
             return factory;
         }

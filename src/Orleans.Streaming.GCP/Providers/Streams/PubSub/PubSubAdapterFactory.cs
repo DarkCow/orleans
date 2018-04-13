@@ -7,6 +7,7 @@ using Orleans.Providers.Streams.Common;
 using Orleans.Serialization;
 using Orleans.Streams;
 using Orleans.Configuration;
+using Orleans.Configuration.Overrides;
 
 namespace Orleans.Providers.GCP.Streams.PubSub
 {
@@ -64,7 +65,7 @@ namespace Orleans.Providers.GCP.Streams.PubSub
         public virtual Task<IQueueAdapter> CreateAdapter()
         {
             var adapter = new PubSubAdapter<TDataAdapter>(_adaptorFactory(), SerializationManager, this.loggerFactory, _streamQueueMapper,
-                this.options.ProjectId, this.options.TopicId, this.options.ClusterId ?? this.clusterOptions.ClusterId, this._providerName, this.options.Deadline, this.options.CustomEndpoint);
+                this.options.ProjectId, this.options.TopicId, this.clusterOptions.ServiceId, this._providerName, this.options.Deadline, this.options.CustomEndpoint);
             return Task.FromResult<IQueueAdapter>(adapter);
         }
 
@@ -79,7 +80,8 @@ namespace Orleans.Providers.GCP.Streams.PubSub
             var pubsubOptions = services.GetOptionsByName<PubSubOptions>(name);
             var cacheOptions = services.GetOptionsByName<SimpleQueueCacheOptions>(name);
             var queueMapperOptions = services.GetOptionsByName<HashRingStreamQueueMapperOptions>(name);
-            var factory = ActivatorUtilities.CreateInstance<PubSubAdapterFactory<TDataAdapter>>(services, name, pubsubOptions, queueMapperOptions, cacheOptions);
+            IOptions<ClusterOptions> clusterOptions = services.GetProviderClusterOptions(name);
+            var factory = ActivatorUtilities.CreateInstance<PubSubAdapterFactory<TDataAdapter>>(services, name, pubsubOptions, queueMapperOptions, cacheOptions, clusterOptions);
             factory.Init();
             return factory;
         }

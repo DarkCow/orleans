@@ -1,12 +1,8 @@
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using Orleans.Streaming.EventHubs;
 using Orleans.Providers.Streams.Generator;
 using Orleans.Runtime;
-using Orleans.Runtime.Configuration;
-using Orleans.ServiceBus.Providers;
 using Orleans.Streams;
 using Orleans.TestingHost;
 using Tester.StreamingTests;
@@ -14,8 +10,6 @@ using TestExtensions;
 using TestGrains;
 using UnitTests.Grains;
 using Xunit;
-using Microsoft.WindowsAzure.Storage.Table;
-using Microsoft.Extensions.Logging.Abstractions;
 using Orleans.Hosting;
 using Orleans;
 using Microsoft.Extensions.Configuration;
@@ -29,8 +23,6 @@ namespace ServiceBus.Tests.StreamingTests
         private const string StreamProviderName = GeneratedStreamTestConstants.StreamProviderName;
         private const string EHPath = "ehorleanstest";
         private const string EHConsumerGroup = "orleansnightly";
-        private const string EHCheckpointTable = "ehcheckpoint";
-        private static readonly string CheckpointNamespace = Guid.NewGuid().ToString();
 
         private readonly ImplicitSubscritionRecoverableStreamTestRunner runner;
 
@@ -44,20 +36,12 @@ namespace ServiceBus.Tests.StreamingTests
                 builder.AddClientBuilderConfigurator<MyClientBuilderConfigurator>();
             }
 
-            public override void Dispose()
-            {
-                base.Dispose();
-                var dataManager = new AzureTableDataManager<TableEntity>(EHCheckpointTable, TestDefaultConfiguration.DataConnectionString, NullLoggerFactory.Instance);
-                dataManager.InitTableAsync().Wait();
-                dataManager.ClearTableAsync().Wait();
-            }
-
             private class MySiloBuilderConfigurator : ISiloBuilderConfigurator
             {
                 public void Configure(ISiloHostBuilder hostBuilder)
                 {
                     hostBuilder
-                        .AddEventHubStreams(StreamProviderName)
+                        .AddEventHubStreams(StreamProviderName, b=>b
                         .ConfigureEventHub(ob => ob.Configure(options =>
                           {
                               options.ConnectionString = TestDefaultConfiguration.EventHubConnectionString;
@@ -67,12 +51,10 @@ namespace ServiceBus.Tests.StreamingTests
                         .UseEventHubCheckpointer(ob => ob.Configure(options =>
                           {
                               options.ConnectionString = TestDefaultConfiguration.DataConnectionString;
-                              options.TableName = EHCheckpointTable;
-                              options.Namespace = CheckpointNamespace;
                               options.PersistInterval = TimeSpan.FromSeconds(1);
                           }))
                         .UseDynamicClusterConfigDeploymentBalancer()
-                        .ConfigureStreamPubSub(StreamPubSubType.ImplicitOnly);
+                        .ConfigureStreamPubSub(StreamPubSubType.ImplicitOnly));
                     hostBuilder
                         .AddMemoryGrainStorageAsDefault();
                 }
@@ -82,14 +64,14 @@ namespace ServiceBus.Tests.StreamingTests
             {
                 public void Configure(IConfiguration configuration, IClientBuilder clientBuilder)
                 {
-                    clientBuilder.AddEventHubStreams(StreamProviderName)
-                        .ConfigureEventHub(ob=>ob.Configure( options =>
+                    clientBuilder.AddEventHubStreams(StreamProviderName, b=>
+                        b.ConfigureEventHub(ob=>ob.Configure( options =>
                         {
                             options.ConnectionString = TestDefaultConfiguration.EventHubConnectionString;
                             options.ConsumerGroup = EHConsumerGroup;
                             options.Path = EHPath;
                         }))
-                        .ConfigureStreamPubSub(StreamPubSubType.ImplicitOnly);
+                        .ConfigureStreamPubSub(StreamPubSubType.ImplicitOnly));
                 }
             }
         }

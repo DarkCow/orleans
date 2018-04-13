@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using System.Threading;
@@ -100,6 +101,11 @@ namespace Orleans.TestingHost
         /// SerializationManager to use in the tests
         /// </summary>
         public SerializationManager SerializationManager { get; private set; }
+
+        /// <summary>
+        /// Delegate used to create and start an individual silo.
+        /// </summary>
+        public Func<string, IList<IConfigurationSource>, SiloHandle> CreateSilo { private get; set; } = InProcessSiloHandle.Create;
         
         /// <summary>
         /// Configures the test cluster plus client in-process.
@@ -133,6 +139,8 @@ namespace Orleans.TestingHost
                 string startMsg = "----------------------------- STARTING NEW UNIT TEST SILO HOST: " + GetType().FullName + " -------------------------------------";
                 WriteLog(startMsg);
                 await InitializeAsync();
+
+                await WaitForInitialStabilization();
             }
             catch (TimeoutException te)
             {
@@ -163,6 +171,44 @@ namespace Orleans.TestingHost
                 //    string.Format("Exception during test initialization: {0}",
                 //        LogFormatter.PrintException(baseExc)));
                 throw;
+            }
+        }
+
+        private async Task WaitForInitialStabilization()
+        {
+            // Poll each silo to check that it knows the expected number of active silos.
+            // If any silo does not have the expected number of active silos in its cluster membership oracle, try again.
+            // If the cluster membership has not stabilized after a certain period of time, give up and continue anyway.
+            var totalWait = Stopwatch.StartNew();
+            while (true)
+            {
+                var silos = this.Silos;
+                var expectedCount = silos.Count;
+                var remainingSilos = expectedCount;
+
+                foreach (var silo in silos)
+                {
+                    var hooks = this.InternalClient.GetTestHooks(silo);
+                    var statuses = await hooks.GetApproximateSiloStatuses();
+                    var activeCount = statuses.Count(s => s.Value == SiloStatus.Active);
+                    if (activeCount != expectedCount) break;
+                    remainingSilos--;
+                }
+
+                if (remainingSilos == 0)
+                {
+                    totalWait.Stop();
+                    break;
+                }
+
+                WriteLog($"{remainingSilos} silos do not have a consistent cluster view, waiting until stabilization.");
+                await Task.Delay(TimeSpan.FromMilliseconds(100));
+
+                if (totalWait.Elapsed < TimeSpan.FromSeconds(60))
+                {
+                    WriteLog($"Warning! {remainingSilos} silos do not have a consistent cluster view after {totalWait.ElapsedMilliseconds}ms, continuing without stabilization.");
+                    break;
+                }
             }
         }
 
@@ -251,7 +297,7 @@ namespace Orleans.TestingHost
             if (silosToStart > 0)
             {
                 var siloStartTasks = Enumerable.Range(this.startedInstances, silosToStart)
-                    .Select(instanceNumber => Task.Run(() => StartOrleansSilo((short)instanceNumber, this.options, startAdditionalSiloOnNewPort))).ToArray();
+                    .Select(instanceNumber => Task.Run(() => StartOrleansSilo((short)instanceNumber, this.options, startSiloOnNewPort: startAdditionalSiloOnNewPort))).ToArray();
 
                 try
                 {
@@ -400,7 +446,7 @@ namespace Orleans.TestingHost
         {
             if (siloName == null) throw new ArgumentNullException(nameof(siloName));
             var siloHandle = this.Silos.Single(s => s.Name.Equals(siloName, StringComparison.Ordinal));
-            var newInstance = StartOrleansSilo(this, this.Silos.IndexOf(siloHandle), this.options);
+            var newInstance = this.StartOrleansSilo(this.Silos.IndexOf(siloHandle), this.options);
             additionalSilos.Add(newInstance);
             return newInstance;
         }
@@ -443,12 +489,7 @@ namespace Orleans.TestingHost
                 InitializeClient();
             }
         }
-
-        private SiloHandle StartOrleansSilo(int instanceNumber, TestClusterOptions clusterOptions, bool startSiloOnNewPort = false)
-        {
-            return StartOrleansSilo(this, instanceNumber, clusterOptions, null, startSiloOnNewPort);
-        }
-
+        
         /// <summary>
         /// Start a new silo in the target cluster
         /// </summary>
@@ -461,8 +502,20 @@ namespace Orleans.TestingHost
         public static SiloHandle StartOrleansSilo(TestCluster cluster, int instanceNumber, TestClusterOptions clusterOptions, IReadOnlyList<IConfigurationSource> configurationOverrides = null, bool startSiloOnNewPort = false)
         {
             if (cluster == null) throw new ArgumentNullException(nameof(cluster));
-            
-            var configurationSources = cluster.ConfigurationSources.ToList();
+            return cluster.StartOrleansSilo(instanceNumber, clusterOptions, configurationOverrides, startSiloOnNewPort);
+        }
+
+        /// <summary>
+        /// Starts a new silo.
+        /// </summary>
+        /// <param name="instanceNumber">The instance number to deploy</param>
+        /// <param name="clusterOptions">The options to use.</param>
+        /// <param name="configurationOverrides">Configuration overrides.</param>
+        /// <param name="startSiloOnNewPort">Whether we start this silo on a new port, instead of the default one</param>
+        /// <returns>A handle to the deployed silo.</returns>
+        public SiloHandle StartOrleansSilo(int instanceNumber, TestClusterOptions clusterOptions, IReadOnlyList<IConfigurationSource> configurationOverrides = null, bool startSiloOnNewPort = false)
+        {
+            var configurationSources = this.ConfigurationSources.ToList();
 
             // Add overrides.
             if (configurationOverrides != null) configurationSources.AddRange(configurationOverrides);
@@ -472,11 +525,9 @@ namespace Orleans.TestingHost
                 InitialData = siloSpecificOptions.ToDictionary()
             });
 
-            var handle = cluster.LoadSiloInNewAppDomain(
-                siloSpecificOptions.SiloName,
-                configurationSources);
+            var handle = this.CreateSilo(siloSpecificOptions.SiloName,configurationSources);
             handle.InstanceNumber = (short)instanceNumber;
-            Interlocked.Increment(ref cluster.startedInstances);
+            Interlocked.Increment(ref this.startedInstances);
             return handle;
         }
 
@@ -491,12 +542,6 @@ namespace Orleans.TestingHost
             {
                 Interlocked.Decrement(ref this.startedInstances);
             }
-        }
-
-        private SiloHandle LoadSiloInNewAppDomain(string siloName, IList<IConfigurationSource> configuration)
-        {
-            WriteLog("Starting a new silo in app domain {0}", siloName);
-            return AppDomainSiloHandle.Create(siloName, configuration);
         }
 
         #endregion

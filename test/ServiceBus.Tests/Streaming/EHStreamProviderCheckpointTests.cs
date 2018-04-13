@@ -12,7 +12,6 @@ using Orleans.Runtime;
 using Orleans.Streams;
 using Orleans.TestingHost;
 using Orleans.TestingHost.Utils;
-using Orleans.Streaming.EventHubs;
 using TestExtensions;
 using TestGrainInterfaces;
 using TestGrains;
@@ -30,8 +29,6 @@ namespace ServiceBus.Tests.StreamingTests
         private const string StreamProviderName = GeneratedStreamTestConstants.StreamProviderName;
         private const string EHPath = "ehorleanstest";
         private const string EHConsumerGroup = "orleansnightly";
-        private const string EHCheckpointTable = "ehcheckpoint";
-        private static readonly string CheckpointNamespace = Guid.NewGuid().ToString();
 
         protected override void ConfigureTestCluster(TestClusterBuilder builder)
         {
@@ -50,7 +47,7 @@ namespace ServiceBus.Tests.StreamingTests
                     {
                         options.ConnectionString = TestDefaultConfiguration.DataConnectionString;
                     })
-                    .AddEventHubStreams(StreamProviderName)
+                    .AddEventHubStreams(StreamProviderName, b=>b
                     .ConfigureEventHub(ob=>ob.Configure(
                     options =>
                     {
@@ -61,12 +58,10 @@ namespace ServiceBus.Tests.StreamingTests
                     }))
                     .UseEventHubCheckpointer(ob=>ob.Configure(options => {
                         options.ConnectionString = TestDefaultConfiguration.DataConnectionString;
-                        options.TableName = EHCheckpointTable;
-                        options.Namespace = CheckpointNamespace;
                         options.PersistInterval = TimeSpan.FromSeconds(1);
                     }))
                     .UseDynamicClusterConfigDeploymentBalancer()
-                    .ConfigureStreamPubSub(StreamPubSubType.ImplicitOnly);
+                    .ConfigureStreamPubSub(StreamPubSubType.ImplicitOnly));
             }
         }
 
@@ -75,7 +70,7 @@ namespace ServiceBus.Tests.StreamingTests
             public void Configure(IConfiguration configuration, IClientBuilder clientBuilder)
             {
                 clientBuilder
-                    .AddEventHubStreams(StreamProviderName)
+                    .AddEventHubStreams(StreamProviderName, b=>b
                     .ConfigureEventHub(ob => ob.Configure(
                     options =>
                     {
@@ -83,7 +78,7 @@ namespace ServiceBus.Tests.StreamingTests
                         options.ConsumerGroup = EHConsumerGroup;
                         options.Path = EHPath;
                     }))
-                    .ConfigureStreamPubSub(StreamPubSubType.ImplicitOnly);
+                    .ConfigureStreamPubSub(StreamPubSubType.ImplicitOnly));
             }
         }
 
@@ -99,14 +94,6 @@ namespace ServiceBus.Tests.StreamingTests
         {
             logger.Info("************************ EHRestartSiloAfterCheckpointTest *********************************");
             await this.RestartSiloAfterCheckpointTestRunner(ImplicitSubscription_RecoverableStream_CollectorGrain.StreamNamespace, 8, 32);
-        }
-
-        public override void Dispose()
-        {
-            var dataManager = new AzureTableDataManager<TableEntity>(EHCheckpointTable, TestDefaultConfiguration.DataConnectionString, NullLoggerFactory.Instance);
-            dataManager.InitTableAsync().Wait();
-            dataManager.ClearTableAsync().Wait();
-            base.Dispose();
         }
 
         private async Task ReloadFromCheckpointTestRunner(string streamNamespace, int streamCount, int eventsInStream)

@@ -16,6 +16,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Orleans.Configuration;
+using Orleans.Configuration.Overrides;
 
 namespace Orleans.Storage
 {
@@ -48,7 +49,8 @@ namespace Orleans.Storage
         public static IGrainStorage Create(IServiceProvider services, string name)
         {
             IOptionsSnapshot<AdoNetGrainStorageOptions> optionsSnapshot = services.GetRequiredService<IOptionsSnapshot<AdoNetGrainStorageOptions>>();
-            return ActivatorUtilities.CreateInstance<AdoNetGrainStorage>(services, Options.Create(optionsSnapshot.Get(name)), name);
+            IOptions<ClusterOptions> clusterOptions = services.GetProviderClusterOptions(name);
+            return ActivatorUtilities.CreateInstance<AdoNetGrainStorage>(services, Options.Create(optionsSnapshot.Get(name)), name, clusterOptions);
         }
     }
 
@@ -90,7 +92,8 @@ namespace Orleans.Storage
         /// </summary>
         private readonly string serviceId;
 
-        private ILogger logger;
+        private readonly ILogger logger;
+
         /// <summary>
         /// The storage used for back-end operations.
         /// </summary>
@@ -127,9 +130,9 @@ namespace Orleans.Storage
         /// </summary>
         public IStorageHasherPicker HashPicker { get; set; } = new StorageHasherPicker(new[] { new OrleansDefaultHasher() });
 
-        private AdoNetGrainStorageOptions options;
-        private IProviderRuntime providerRuntime;
-        private string name;
+        private readonly AdoNetGrainStorageOptions options;
+        private readonly IProviderRuntime providerRuntime;
+        private readonly string name;
 
         public AdoNetGrainStorage(
             ILogger<AdoNetGrainStorage> logger, 
@@ -142,7 +145,7 @@ namespace Orleans.Storage
             this.providerRuntime = providerRuntime;
             this.name = name;
             this.logger = logger;
-            this.serviceId = clusterOptions.Value.ServiceId.ToString();
+            this.serviceId = clusterOptions.Value.ServiceId;
         }
 
         public void Participate(ISiloLifecycle lifecycle)
